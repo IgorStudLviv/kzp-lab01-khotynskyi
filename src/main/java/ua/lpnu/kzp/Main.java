@@ -4,99 +4,136 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+public class Main {
 
-public final class Main {
+    private static final String VERSION = "1.0.0";
 
-    private Main() {
-    }
     public static void main(String[] args) {
-        Path inputPath = Path.of("data", "input.csv");
-        Path outputPath = Path.of("out", "report.txt");
+        String inputPathStr = "data/input.csv";
+        String outputPathStr = "out/report.txt";
 
         for (int i = 0; i < args.length; i++) {
-            if ("--help".equals(args[i])) {
-                System.out.printf("Використання: java -jar lab01.jar [--help] [--input <файл>] [--output <файл>] [--version]%n");
-                return;
-            } else if ("--version".equals(args[i])) {
-                System.out.printf("Версія: 1.0.0%n");
-                return;
-            } else if ("--input".equals(args[i]) && i + 1 < args.length) {
-                inputPath = Path.of(args[++i]);
-            } else if ("--output".equals(args[i]) && i + 1 < args.length) {
-                outputPath = Path.of(args[++i]);
+            switch (args[i]) {
+                case "--help":
+                case "-help":
+                    printHelp();
+                    return;
+                case "--version":
+                    System.out.println("Кінотеатр Лабораторна робота №1. Версія " + VERSION);
+                    return;
+                case "--input":
+                    if (i + 1 < args.length) {
+                        inputPathStr = args[++i];
+                    }
+                    break;
+                case "--output":
+                    if (i + 1 < args.length) {
+                        outputPathStr = args[++i];
+                    }
+                    break;
+                default:
+                    break;
             }
         }
-        List<String> lines;
-        try {
-            lines = Files.readAllLines(inputPath, StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            System.out.printf("Помилка читання вхідного файла: %s%n", e.getMessage());
+
+        Path inputPath = Paths.get(inputPathStr);
+        Path outputPath = Paths.get(outputPathStr);
+
+        if (!Files.exists(inputPath)) {
+            System.err.println("Помилка: Вхідний файл не знайдено за шляхом: " + inputPath);
             return;
         }
-        List<String> errors = new ArrayList<>();
+
+        try {
+            List<String> lines = Files.readAllLines(inputPath, StandardCharsets.UTF_8);
+            processCinemaData(lines, outputPath);
+        } catch (IOException e) {
+            System.err.println("Помилка читання файлу: " + e.getMessage());
+        }
+    }
+
+    private static void printHelp() {
+        System.out.println("Використання: java -jar lab01-1.0.0.jar [опції]");
+        System.out.println("Опції:");
+        System.out.println("  --help, -help     Показати цю довідку");
+        System.out.println("  --version         Показати версію програми");
+        System.out.println("  <шлях>            Шлях до вхідного CSV файлу (за замовчуванням data/input.csv)");
+        System.out.println("  --output <шлях>   Шлях до файлу звіту (за замовчуванням out/report.txt)");
+    }
+
+    private static void processCinemaData(List<String> lines, Path outputPath) throws IOException {
         int validCount = 0;
         double totalRevenue = 0.0;
-        double sumTicketPrice = 0.0;
-        int maxSoldTickets = Integer.MIN_VALUE;
-        for (int i = 0; i < lines.size(); i++) {
-            String line = lines.get(i);
-            String[] fields = line.split(";", -1);
+        double totalTicketPriceSum = 0.0;
+        int maxTicketsSold = -1;
 
-            if (fields.length != 5) {
-                errors.add(String.format("Рядок %d: неправильна кількість полів (очікується 5)", i + 1));
+        List<String> errors = new ArrayList<>();
+
+        for (int i = 1; i < lines.size(); i++) {
+            String line = lines.get(i).trim();
+            if (line.isEmpty()) {
                 continue;
             }
 
-            if (fields[0].isBlank()) {
-                errors.add(String.format("Рядок %d: порожня назва фільму", i + 1));
+            String[] parts = line.split(";", -1);
+            if (parts.length < 3) {
+                errors.add("Рядок " + (i + 1) + ": недостатньо полів у рядку");
+                continue;
+            }
+
+            String movieTitle = parts[0].trim();
+            if (movieTitle.isEmpty()) {
+                errors.add("Рядок " + (i + 1) + ": порожня назва фільму");
                 continue;
             }
 
             try {
-                int hall = Integer.parseInt(fields[1]);
-                double ticketPrice = Double.parseDouble(fields[2]);
-                int sold = Integer.parseInt(fields[3]);
-                int durationMin = Integer.parseInt(fields[4]);
+                int ticketsSold = Integer.parseInt(parts[1].trim());
+                double ticketPrice = Double.parseDouble(parts[2].trim());
 
-                if (hall <= 0 || ticketPrice < 0 || sold < 0 || durationMin <= 0) {
-                    errors.add(String.format("Рядок %d: містить від'ємне або нульове значення там, де це не має сенсу", i + 1));
+                if (ticketsSold <= 0 || ticketPrice <= 0) {
+                    errors.add("Рядок " + (i + 1) + ": містить від'ємне або нульове значення там, де це не має сенсу");
                     continue;
                 }
+
                 validCount++;
-                totalRevenue += (ticketPrice * sold);
-                sumTicketPrice += ticketPrice;
-                maxSoldTickets = Math.max(maxSoldTickets, sold);
+                double revenue = ticketsSold * ticketPrice;
+                totalRevenue += revenue;
+                totalTicketPriceSum += ticketPrice;
+
+                if (ticketsSold > maxTicketsSold) {
+                    maxTicketsSold = ticketsSold;
+                }
 
             } catch (NumberFormatException e) {
-                errors.add(String.format("Рядок %d: числове поле має помилковий формат", i + 1));
+                errors.add("Рядок " + (i + 1) + ": числове поле має помилковий формат");
             }
         }
-        double averageTicketPrice = (validCount > 0) ? sumTicketPrice / validCount : 0.0;
+
+        double averagePrice = (validCount > 0) ? (totalTicketPriceSum / validCount) : 0.0;
+
         StringBuilder report = new StringBuilder();
-        report.append(String.format(Locale.ROOT, "--- Звіт Кінотеатру ---%n"));
-        report.append(String.format(Locale.ROOT, "Коректних записів: %d%n", validCount));
-        report.append(String.format(Locale.ROOT, "Загальний виторг: %.2f%n", totalRevenue));
-        report.append(String.format(Locale.ROOT, "Середня ціна квитка: %.2f%n", averageTicketPrice));
-        if (validCount > 0) {
-            report.append(String.format(Locale.ROOT, "Найбільша кількість проданих квитків: %d%n", maxSoldTickets));
+        report.append("--- Звіт Кінотеатру ---\n");
+        report.append(String.format(Locale.US, "Коректних записів: %d\n", validCount));
+        report.append(String.format(Locale.US, "Загальний виторг: %.2f\n", totalRevenue));
+        report.append(String.format(Locale.US, "Середня ціна квитка: %.2f\n", averagePrice));
+        report.append(String.format(Locale.US, "Найбільша кількість проданих квитків: %d\n", (maxTicketsSold == -1 ? 0 : maxTicketsSold)));
+
+        report.append("\n--- Помилки (").append(errors.size()).append(") ---\n");
+        for (String err : errors) {
+            report.append(err).append("\n");
         }
-        report.append(String.format(Locale.ROOT, "%n--- Помилки (%d) ---%n", errors.size()));
-        for (String error : errors) {
-            report.append(error).append(System.lineSeparator());
+
+        System.out.print(report.toString());
+
+        if (outputPath.getParent() != null) {
+            Files.createDirectories(outputPath.getParent());
         }
-        String finalReport = report.toString();
-        System.out.print(finalReport);
-        try {
-            if (outputPath.getParent() != null) {
-                Files.createDirectories(outputPath.getParent());
-            }
-            Files.writeString(outputPath, finalReport, StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            System.out.printf("Помилка створення файлу звіту: %s%n", outputPath);
-        }
+        Files.writeString(outputPath, report.toString(), StandardCharsets.UTF_8);
     }
 }
